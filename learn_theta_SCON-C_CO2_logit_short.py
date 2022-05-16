@@ -112,9 +112,6 @@ net, q_theta, p_theta, obs_model, norm_hist, ELBO_hist, SBM_SDE_instance = train
         NUM_LAYERS = num_layers, REVERSE = reverse, BASE_STATE = base_state)
 print('Training finished. Moving to saving of output files.')
 
-#Evaluate test ELBO and sample x
-neg_ELBO, x_add_CO2 = eval_elbo(final_eval_batch_size, net, q_theta, p_theta, obs_model, fix_theta_dict, dt_flow, n, SBM_SDE_instance, x0_prior_SCON, learn_CO2)
-
 #Save net and ELBO files.
 now = datetime.now()
 now_string = 'SCON-C_CO2_logit_short' + now.strftime('_%Y_%m_%d_%H_%M_%S')
@@ -132,7 +129,7 @@ p_theta_save_string = os.path.join(outputs_folder, 'p_theta' + save_string)
 obs_model_save_string = os.path.join(outputs_folder, 'obs_model' + save_string)
 ELBO_save_string = os.path.join(outputs_folder, 'ELBO' + save_string)
 SBM_SDE_instance_save_string = os.path.join(outputs_folder, 'SBM_SDE_instance' + save_string)
-x_eval_save_string = os.path.join(outputs_folder, 'x_eval' + save_string)
+
 torch.save(train_args, train_args_save_string)
 torch.save(net, net_save_string)
 torch.save(net.state_dict(), net_state_dict_save_string) #For loading net on CPU.
@@ -142,8 +139,12 @@ torch.save(p_theta, p_theta_save_string)
 torch.save(obs_model, obs_model_save_string)
 torch.save(ELBO_hist, ELBO_save_string)
 torch.save(SBM_SDE_instance, SBM_SDE_instance_save_string)
-torch.save((neg_ELBO, x_add_CO2), x_eval_save_string)
 print('Output files saving finished.') # Moving to plotting.
+
+#Evaluate test ELBO and sample x
+neg_ELBO, x_add_CO2 = eval_elbo(final_eval_batch_size, net, q_theta, p_theta, obs_model, fix_theta_dict, dt_flow, n, SBM_SDE_instance, x0_prior_SCON, learn_CO2)
+x_eval_save_string = os.path.join(outputs_folder, 'x_eval' + save_string)
+torch.save((neg_ELBO, x_add_CO2), x_eval_save_string)
 
 #Plot training posterior results and ELBO history.
 #plots_folder = 'training_plots/'
