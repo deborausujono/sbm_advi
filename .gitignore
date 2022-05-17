@@ -130,4 +130,5 @@ dmypy.json
 
 # Other files
 .DS_Store
+*.swp
 *.sub
