@@ -36,6 +36,7 @@ def eval_elbo(eval_batch_size, net, q_theta, p_theta, obs_model, fix_theta_dict,
     net.eval()
     with torch.no_grad():
         x, log_prob = net(eval_batch_size)
+        log_prob = log_prob.reshape(-1)
         #print('x = ', x)
         theta_dict, theta, log_q_theta, parent_loc_scale_dict = q_theta(eval_batch_size)
         log_p_theta = p_theta.log_prob(theta).sum(-1)
@@ -48,11 +49,18 @@ def eval_elbo(eval_batch_size, net, q_theta, p_theta, obs_model, fix_theta_dict,
             log_lik, drift, diffusion_sqrt, x = calc_log_lik(x, theta_dict, dt_flow, SBM_SDE_instance, x0_prior, learn_CO2)
         else:
             log_lik, drift, diffusion_sqrt = calc_log_lik(x, theta_dict, dt_flow, SBM_SDE_instance, x0_prior, learn_CO2)
-        neg_ELBO = -log_p_theta.mean() + log_q_theta.mean() + log_prob.mean() - log_lik.mean() - obs_model(x) 
+        obs_lik = obs_model(x)
+
+        assert log_p_theta.shape == (eval_batch_size, )
+        assert log_q_theta.shape == (eval_batch_size, )
+        assert log_prob.shape == (eval_batch_size, )
+        assert log_lik.shape == (eval_batch_size, )
+        assert obs_lik.shape == (eval_batch_size, )
+        neg_ELBO = -log_p_theta + log_q_theta + log_prob - log_lik - obs_lik
         #print('x.size() =', x.size())
         #print(f'Net with {train_args} has test neg_ELBO = {neg_ELBO}')
 
-        return neg_ELBO, x
+        return neg_ELBO[neg_ELBO.isfinite()].mean(), x
 
 def calc_log_lik(C_PATH: torch.Tensor,
         PARAMS_DICT: DictOfTensors,
@@ -188,6 +196,7 @@ def train(DEVICE, ELBO_LR: float, ELBO_ITER: int, BATCH_SIZE: int,
         for iteration in range(T_ITER + 1):
             if iteration % EVAL_ELBO_EVERY == 0:
                 loss_no_grad, _ = eval_elbo(EVAL_BATCH_SIZE, net, q_theta, priors, obs_model, FIX_THETA_DICT, DT, N, SBM_SDE, INIT_PRIOR, LEARN_CO2)
+                assert torch.isfinite(loss_no_grad)
                 ELBO_losses.append(loss_no_grad.item())
 
                 if (iteration + 1) % PRINT_EVERY == 0:
@@ -243,10 +252,10 @@ def train(DEVICE, ELBO_LR: float, ELBO_ITER: int, BATCH_SIZE: int,
                 #Negative ELBO: -log p(theta) + log q(theta) - log p(y_0|x_0, theta) [already accounted for in obs_model output when learning x_0] + log q(x|theta) - log p(x|theta) - log p(y|x, theta)                
                 if LEARN_CO2:
                     log_lik, drift, diffusion_sqrt, x_add_CO2 = calc_log_lik(C_PATH, theta_dict, DT, SBM_SDE, INIT_PRIOR, LEARN_CO2)
-                    ELBO = -log_p_theta.mean() + log_q_theta.mean() + log_prob.mean() - log_lik.mean() - obs_model(x_add_CO2)
+                    ELBO = -log_p_theta.mean() + log_q_theta.mean() + log_prob.mean() - log_lik.mean() - obs_model(x_add_CO2).mean()
                 else:
                     log_lik, drift, diffusion_sqrt = calc_log_lik(C_PATH, theta_dict, DT, SBM_SDE, INIT_PRIOR, LEARN_CO2)
-                    ELBO = -log_p_theta.mean() + log_q_theta.mean() + log_prob.mean() - log_lik.mean() - obs_model(C_PATH)
+                    ELBO = -log_p_theta.mean() + log_q_theta.mean() + log_prob.mean() - log_lik.mean() - obs_model(C_PATH).mean()
 
                 best_loss_ELBO = ELBO if ELBO < best_loss_ELBO else best_loss_ELBO
 
@@ -269,9 +278,9 @@ def train(DEVICE, ELBO_LR: float, ELBO_ITER: int, BATCH_SIZE: int,
                         print('\nlog_prob.mean()', log_prob.mean())
                         print('\nlog_lik.mean()', log_lik.mean())
                         if LEARN_CO2:
-                            print('\nobs_model', obs_model(x_add_CO2))
+                            print('\nobs_model', obs_model(x_add_CO2).mean())
                         else:
-                            print('\nobs_model', obs_model(C_PATH))
+                            print('\nobs_model', obs_model(C_PATH).mean())
 
                 ELBO.backward()
                 torch.nn.utils.clip_grad_norm_(ELBO_params, 5.0)

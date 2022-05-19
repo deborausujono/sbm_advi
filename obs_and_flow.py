@@ -325,7 +325,7 @@ class ObsModel(nn.Module):
         
     def forward(self, x):
         obs_ll = D.normal.Normal(self.mu.permute(1, 0), self.scale).log_prob(x[:, self.idx, :])
-        return torch.sum(obs_ll, [-1, -2]).mean()
+        return torch.sum(obs_ll, [-1, -2])
 
     def get_idx(self, TIMES, DT):
         return list((TIMES / DT).astype(int))
